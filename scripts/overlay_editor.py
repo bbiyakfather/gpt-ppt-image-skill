@@ -71,6 +71,11 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>overlay editor
   #stage.pinning { cursor:crosshair; }
   .lbl { position:absolute; transform:translate(-50%,-50%); white-space:pre;
          cursor:grab; outline:none; line-height:1.25; }
+  .lbl.box { min-width:12px; min-height:12px; }
+  .rsz { position:absolute; right:-7px; bottom:-7px; width:14px; height:14px;
+         background:#4c9aff; border:2px solid #fff; border-radius:4px;
+         display:none; cursor:nwse-resize; }
+  .lbl.sel .rsz { display:block; }
   .lbl.sel { box-shadow:0 0 0 2px #4c9aff !important; }
   .lbl[contenteditable="true"] { cursor:text; box-shadow:0 0 0 2px #f6ad55 !important; }
   .pin { position:absolute; transform:translate(-50%,-50%); width:26px; height:26px;
@@ -88,6 +93,7 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>overlay editor
 <div id="bars">
   <div class="row">
     <button id="add">+ 라벨</button>
+    <button id="addbox" title="장식 박스(스크림·패널) 레이어 추가">+ 박스</button>
     <button id="pinmode" title="핀 모드: 이미지를 클릭해 메모 핀 추가">📌 핀</button>
     <span class="grp">서체 <select id="family">__FAMILY_OPTIONS__</select>
       <select id="weight"></select></span>
@@ -153,9 +159,16 @@ function fit(){
 function render(el){
   const d=el.dataset;
   el.style.left=d.x+'%'; el.style.top=d.y+'%';
+  el.style.zIndex=d.z;
+  if(d.type==='box'){
+    el.style.width=d.w+'%'; el.style.height=d.h+'%';
+    el.style.background=d.grad ? d.grad : hexRgba(d.bg, +d.bgAlpha);
+    el.style.borderRadius=d.shape==='pill' ? (16*scale)+'px' : '0';
+    el.style.border=d.border ? Math.max(1,3*scale)+'px solid '+d.border : 'none';
+    return;
+  }
   el.style.fontFamily="'"+d.family+"'"; el.style.fontWeight=d.weight;
   el.style.fontSize=(d.size*scale)+'px'; el.style.color=d.color;
-  el.style.zIndex=d.z;
   if(d.shape!=='none'){
     el.style.background=hexRgba(d.bg, +d.bgAlpha);
     el.style.borderRadius=d.shape==='pill' ? (12*scale)+'px' : '0';
@@ -198,7 +211,7 @@ function makeDraggable(el){
 function addLabel(p){
   const el=document.createElement('div'); el.className='lbl'; el.contentEditable=false;
   el.textContent=p.text||'문구를 입력하세요';
-  Object.assign(el.dataset,{x:p.x??50,y:p.y??50,size:p.size??48,
+  Object.assign(el.dataset,{type:'text',x:p.x??50,y:p.y??50,size:p.size??48,
     family:p.family??'Malgun Gothic',weight:p.weight??700,color:p.color??'#1b2f42',
     shape:p.shape??'none',bg:p.bg??'#ffffff',bgAlpha:p.bgAlpha??85,
     border:p.border??'',z:p.z??(++zTop)});
@@ -207,6 +220,27 @@ function addLabel(p){
     document.execCommand('selectAll',false,null); });
   el.addEventListener('blur',()=>{ el.contentEditable=false;
     if(!el.textContent.trim()){ el.remove(); if(sel===el) select(null); } });
+  return el;
+}
+function addBox(p){
+  const el=document.createElement('div'); el.className='lbl box';
+  Object.assign(el.dataset,{type:'box',x:p.x??50,y:p.y??50,w:p.w??20,h:p.h??12,
+    shape:p.shape??'pill',bg:p.bg??'#0f2a43',bgAlpha:p.bgAlpha??55,
+    border:p.border??'',grad:p.grad??'',z:p.z??(++zTop)});
+  const h=document.createElement('div'); h.className='rsz'; el.appendChild(h);
+  stage.appendChild(el); render(el); select(el); makeDraggable(el);
+  h.addEventListener('pointerdown',ev=>{
+    ev.stopPropagation(); ev.preventDefault(); select(el);
+    const r=stage.getBoundingClientRect();
+    const move=mv=>{
+      const cx=r.left+(+el.dataset.x)/100*r.width, cy=r.top+(+el.dataset.y)/100*r.height;
+      el.dataset.w=Math.max(1,(mv.clientX-cx)*2/r.width*100).toFixed(2);
+      el.dataset.h=Math.max(1,(mv.clientY-cy)*2/r.height*100).toFixed(2);
+      render(el);
+    };
+    const up=()=>{ removeEventListener('pointermove',move); removeEventListener('pointerup',up); };
+    addEventListener('pointermove',move); addEventListener('pointerup',up);
+  });
   return el;
 }
 function addPin(xPct,yPct){
@@ -272,6 +306,7 @@ document.querySelectorAll('.drop').forEach(btn=>{
 $('front').onclick=()=>{ if(sel){ sel.dataset.z=++zTop; render(sel);} };
 $('back').onclick=()=>{ if(sel){ sel.dataset.z=--zBot; render(sel);} };
 $('add').onclick=()=>addLabel({});
+$('addbox').onclick=()=>addBox({});
 $('del').onclick=()=>{ if(sel){ sel.remove(); select(null);} };
 $('pinmode').onclick=()=>{ pinning=!pinning;
   $('pinmode').classList.toggle('on',pinning); stage.classList.toggle('pinning',pinning); };
@@ -287,11 +322,14 @@ document.addEventListener('pointerdown',e=>{
   if(!e.target.closest('.lbl')&&!e.target.closest('#bars')&&!e.target.closest('#pop')
      &&!e.target.closest('.pin')) select(null); });
 function collect(){
-  return [...document.querySelectorAll('.lbl')].map(el=>({
-    text:el.innerText, x:+el.dataset.x, y:+el.dataset.y, size:+el.dataset.size,
-    family:el.dataset.family, weight:+el.dataset.weight, color:el.dataset.color,
-    shape:el.dataset.shape, bg:el.dataset.bg, bgAlpha:+el.dataset.bgAlpha,
-    border:el.dataset.border, z:+el.dataset.z }));
+  return [...document.querySelectorAll('.lbl')].map(el=>{
+    const d=el.dataset, o={type:d.type||'text', x:+d.x, y:+d.y,
+      shape:d.shape, bg:d.bg, bgAlpha:+d.bgAlpha, border:d.border, z:+d.z};
+    if(o.type==='box'){ o.w=+d.w; o.h=+d.h; o.grad=d.grad||''; }
+    else { o.text=el.innerText; o.size=+d.size; o.family=d.family;
+           o.weight=+d.weight; o.color=d.color; }
+    return o;
+  });
 }
 function collectPins(){
   return [...document.querySelectorAll('.pin')].map(el=>({
@@ -308,7 +346,7 @@ $('gen').onclick=()=>post('generate');
 $('done').onclick=()=>post('apply');
 $('cancel').onclick=()=>post('cancel');
 bg.onload=()=>{ natW=bg.naturalWidth; natH=bg.naturalHeight; fit();
-  INIT.forEach(addLabel); select(null); };
+  INIT.forEach(p=>p.type==='box'?addBox(p):addLabel(p)); select(null); };
 addEventListener('resize',fit);
 </script></body></html>"""
 

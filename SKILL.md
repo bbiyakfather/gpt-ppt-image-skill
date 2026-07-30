@@ -75,13 +75,18 @@ mkdir -p gpt-image       # 현재 프로젝트 루트에. 실패(권한) 시 중
 
 팔레트 서체를 쓰는 HTML에는 `<link rel="stylesheet" href="file:///C:/Users/<사용자>/.claude/skills/codex-image/assets/fonts/fonts.css">` 를 넣는다 (헤드리스 캡처에서 file:// 로딩 검증됨). extrabold가 없는 서체(G마켓·KoPub·맑은 고딕)는 700이 최고 굵기임을 사용자에게 고지.
 
-**2단계 — overlay HTML 작성**: 두 가지 방식 중 선택.
+**2단계 — 디자인 시안 제안 → overlay 작성**:
 
-**(a) 대화형 에디터** — 사용자가 서체·배치·문구·스타일을 직접 정하고 싶을 때 (권장 제안):
+**디자인 시안 제안 (에디터를 열기 전 필수)**: Claude가 먼저 **다층 레이어 시안**(text + box 레이어 JSON)을 디자이너처럼 설계해 `--labels` 초안으로 제안한다 — 낱개 라벨 나열(PPT식)이 아니라 박스 레이어(다크 글라스 패널·스크림·컬러 칩)로 정보를 묶은 완성된 시안. 설계 기준:
+- `frontend-design` 스킬 원칙: 타입 스케일 2단, 시그니처 요소 1개, 절제(넣을까 말까면 뺀다)
+- `theme-factory` 스킬: 색·폰트 페어링을 테마 토큰으로 확정(즉흥 색 선택 금지). 프리셋 10종 또는 즉석 테마
+- (예술성 요구 시) `canvas-design` 스킬: 디자인 철학 선언 → 시각 표현
+
+**(a) 대화형 에디터** — 시안을 사용자가 다듬는 기본 경로:
 ```bash
 python "$HOME/.claude/skills/codex-image/scripts/overlay_editor.py" <base.png> [--labels <초안라벨.json>] --timeout 570
 ```
-- Bash timeout **600000ms**. 기능: 라벨 추가·더블클릭 타이핑·드래그 배치 / 서체·굵기·크기·글자색 / **박스 스타일**(없음·둥근·각진 + 배경색·투명도·테두리색 — 색상마다 💧 스포이드로 화면에서 색 추출) / **레이어**(앞으로·뒤로) / **📌 핀 모드**(이미지 클릭 = 번호 메모 핀 + 참고 이미지 첨부).
+- Bash timeout **600000ms**. 기능: 라벨 추가·더블클릭 타이핑·드래그 배치 / **+ 박스**(스크림·글라스 패널 장식 레이어, 우하단 핸들로 크기 조절, `grad`로 CSS 그라디언트 지원) / 서체·굵기·크기·글자색 / **박스 스타일**(없음·둥근·각진 + 배경색·투명도·테두리색 — 색상마다 💧 스포이드로 화면에서 색 추출) / **레이어**(앞으로·뒤로) / **📌 핀 모드**(이미지 클릭 = 번호 메모 핀 + 참고 이미지 첨부).
 - stdout 마지막 줄: `{"action":"apply"|"generate","labels":[{text,x,y,size,family,weight,color,shape,bg,bgAlpha,border,z}],"pins":[{n,x,y,comment,image}]}` (x/y = 이미지 대비 % 중심, size = 원본 px, 핀 참고 이미지는 `<base>-pin<n>.png` 로 자동 저장됨). 이 JSON을 `overlay-<slug>-labels.json` 으로 보존한다.
 - **action 처리**:
   - `apply` → labels를 (b) 규약 HTML로 변환해 3단계 캡처. 박스는 CSS로 그대로 매핑: 둥근=`border-radius:12px`·각진=0, 배경 `rgba(bg, bgAlpha%)`, 테두리 `3px solid`, z-index=z. pins가 있으면 §7 분류대로 처리하고(텍스트 핀=HTML 반영, 그림 핀=배경 재생성), 핀의 image 경로는 codex `-i` 참고 이미지로 추가 첨부한다.
