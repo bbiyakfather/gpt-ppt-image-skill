@@ -77,12 +77,16 @@ mkdir -p gpt-image       # 현재 프로젝트 루트에. 실패(권한) 시 중
 
 **2단계 — overlay HTML 작성**: 두 가지 방식 중 선택.
 
-**(a) 대화형 에디터** — 사용자가 서체·배치·문구를 직접 정하고 싶을 때 (권장 제안):
+**(a) 대화형 에디터** — 사용자가 서체·배치·문구·스타일을 직접 정하고 싶을 때 (권장 제안):
 ```bash
 python "$HOME/.claude/skills/codex-image/scripts/overlay_editor.py" <base.png> [--labels <초안라벨.json>] --timeout 570
 ```
-- Bash timeout **600000ms**. 브라우저가 열리면: [라벨 추가] → 더블클릭 타이핑 → 드래그 배치 → 툴바에서 서체/굵기/크기/색 → [완료].
-- stdout 마지막 줄: `{"action":"apply","labels":[{text,x,y,size,family,weight,color}]}` (x/y = 이미지 대비 % 중심, size = 원본 px). 이 JSON을 `overlay-<slug>-labels.json` 으로 보존하고, 그대로 (b) 규약의 HTML로 변환한다. `cancel`/`timeout` 이면 (b)로 진행.
+- Bash timeout **600000ms**. 기능: 라벨 추가·더블클릭 타이핑·드래그 배치 / 서체·굵기·크기·글자색 / **박스 스타일**(없음·둥근·각진 + 배경색·투명도·테두리색 — 색상마다 💧 스포이드로 화면에서 색 추출) / **레이어**(앞으로·뒤로) / **📌 핀 모드**(이미지 클릭 = 번호 메모 핀 + 참고 이미지 첨부).
+- stdout 마지막 줄: `{"action":"apply"|"generate","labels":[{text,x,y,size,family,weight,color,shape,bg,bgAlpha,border,z}],"pins":[{n,x,y,comment,image}]}` (x/y = 이미지 대비 % 중심, size = 원본 px, 핀 참고 이미지는 `<base>-pin<n>.png` 로 자동 저장됨). 이 JSON을 `overlay-<slug>-labels.json` 으로 보존한다.
+- **action 처리**:
+  - `apply` → labels를 (b) 규약 HTML로 변환해 3단계 캡처. 박스는 CSS로 그대로 매핑: 둥근=`border-radius:12px`·각진=0, 배경 `rgba(bg, bgAlpha%)`, 테두리 `3px solid`, z-index=z. pins가 있으면 §7 분류대로 처리하고(텍스트 핀=HTML 반영, 그림 핀=배경 재생성), 핀의 image 경로는 codex `-i` 참고 이미지로 추가 첨부한다.
+  - `generate` → **통짜 생성**: labels의 문구(정확 철자)·위치(영역 서술)·서체명·크기 비율을 §3 규칙대로 프롬프트로 변환해 텍스트 포함 이미지를 1장 생성(§4). 소형 텍스트 경고 조건에 해당하면 생성 전 고지 후 진행 여부 확인.
+  - `cancel`/`timeout` → (b) 직접 작성으로 진행.
 - Claude가 초안 라벨(`--labels`)을 미리 채워 넘기면 사용자는 다듬기만 하면 된다.
 
 **(b) Claude 직접 작성** — `gpt-image/overlay-<slug>.html` 한 파일. 규약:
