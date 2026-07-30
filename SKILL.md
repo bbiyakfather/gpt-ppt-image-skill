@@ -47,22 +47,49 @@ mkdir -p gpt-image       # 현재 프로젝트 루트에. 실패(권한) 시 중
 | Style/Medium | 스타일·매체 (flat vector, 3D render, watercolor, photorealistic 등) |
 | Color | 색상 팔레트 — 세션에서 언급된 브랜드 색 반영 |
 | Quality | 품질 수식어 (highly detailed, clean edges, professional) |
-| Text | 필요한 문구(한글 포함)를 **정확한 철자 그대로** 프롬프트에 명시해 이미지에 직접 그린다. 문구는 따옴표로 감싸 "render exactly this text"로 지시하고, 한글이 들어가면 "clean geometric sans-serif typography" 류 서체 인상 지시를 함께 넣는다(§3-A 폴백 전환 시 오버레이 폰트와의 이질감 축소). 텍스트가 필요 없는 이미지만 "no text, no letters, no watermark" |
+| Text | 필요한 문구(한글 포함)를 **정확한 철자 그대로** 프롬프트에 명시해 이미지에 직접 그린다. 문구는 따옴표로 감싸 "render exactly this text"로 지시. **폰트 통일**: 한글이 들어가면 §3-A 폰트 팔레트에서 서체를 정하고(기본 맑은 고딕) 그 이름을 `typography in the style of '<서체명>', the clean Korean geometric sans-serif` 로 프롬프트에 명기한다 — §3-A 오버레이 HTML도 같은 서체를 쓰므로 두 경로 산출물의 서체가 통일된다. 텍스트가 필요 없는 이미지만 "no text, no letters, no watermark" |
 | Format | 용도별 규격 (hero: wide, icon: square+simple silhouette, diagram: clear labels) |
 
 규칙: **세션 컨텍스트**(프로젝트 주제, 논의된 테마·색·톤)를 반영하되, **사용자 명시 요구가 항상 우선**. 최종 프롬프트는 완료 보고에 요약 포함.
 
+**소형 텍스트 사전 경고 (생성 전 필수 판정)**: gpt-image-2는 글자가 작게 그려질수록 깨진다 — 큰 헤드라인(이미지 세로의 ~7%)은 정확히 렌더된 실측 사례가 있으나, 작은 라벨은 고위험. 요청이 다음 중 하나에 해당하면 **생성 전에** 깨짐 고위험을 경고하고 선택지를 제시한다: ① 그대로 진행(깨지면 한도 소모) ② 처음부터 §3-A 오버레이(배경 1장 + 무료 텍스트).
+- 한글 문구가 3개 이상 (다이어그램·개념도·인포그래픽·표 형태 포함)
+- 예상 글자 높이가 이미지 세로의 약 4% 미만 (긴 문장, 좁은 영역의 라벨, 캡션류)
+- 문구에 숫자·단위·고유명사가 섞여 정확성이 필수인 경우
+
 ### 3-A. 한글 텍스트 폴백 — HTML 오버레이 + Chrome 재캡처
 
-**진입 조건**(둘 중 하나): ① 같은 한글 문구가 2회 연속 깨짐 → 사용자에게 폴백을 제안하고 승인받는다 ② 사용자가 처음부터 "글자는 오버레이로"를 요청. 제안 시 비용을 고지한다: "배경 재생성 1회(한도 차감), 이후 텍스트 수정은 무료·즉시".
+**진입 조건**(셋 중 하나): ① 같은 한글 문구가 2회 연속 깨짐 → 사용자에게 폴백을 제안하고 승인받는다 ② 사용자가 처음부터 "글자는 오버레이로"를 요청 ③ §3 소형 텍스트 사전 경고에서 사용자가 오버레이를 선택. 제안 시 비용을 고지한다: "배경 재생성 1회(한도 차감), 이후 텍스트 수정은 무료·즉시".
 
 **1단계 — 배경 재생성** (한도 1회): 기존 이미지를 `-i`로 첨부해 같은 구도의 텍스트 제외 버전을 생성한다. 프롬프트에 "no text, no letters, no watermark" + "keep composition identical" + 텍스트가 앉을 자리의 여백(negative space) 확보 지시를 넣는다. 처음부터 오버레이로 시작하는 경우는 `-i` 없이 텍스트 제외 프롬프트로 1차 생성한다.
 
-**2단계 — overlay HTML 작성**: `gpt-image/overlay-<slug>.html` 한 파일. 규약:
+**폰트 팔레트** (최초 1회 `python "$HOME/.claude/skills/codex-image/scripts/setup_fonts.py"` 로 설치 → `assets/fonts/fonts.css` 생성):
+
+| 서체 | HTML font-family | 웨이트 |
+|---|---|---|
+| 맑은 고딕 (기본, 시스템) | `'Malgun Gothic'` | 400 · 700 |
+| 나눔스퀘어 | `'NanumSquare'` | 400 · 700 · 800 |
+| G마켓 산스 | `'Gmarket Sans'` | 300 · 400(Medium) · 700 |
+| KoPub 돋움 | `'KoPub Dotum'` | 300 · 400(Medium) · 700 |
+| Noto Sans KR | `'Noto Sans KR'` | 100~900 (가변) |
+
+팔레트 서체를 쓰는 HTML에는 `<link rel="stylesheet" href="file:///C:/Users/<사용자>/.claude/skills/codex-image/assets/fonts/fonts.css">` 를 넣는다 (헤드리스 캡처에서 file:// 로딩 검증됨). extrabold가 없는 서체(G마켓·KoPub·맑은 고딕)는 700이 최고 굵기임을 사용자에게 고지.
+
+**2단계 — overlay HTML 작성**: 두 가지 방식 중 선택.
+
+**(a) 대화형 에디터** — 사용자가 서체·배치·문구를 직접 정하고 싶을 때 (권장 제안):
+```bash
+python "$HOME/.claude/skills/codex-image/scripts/overlay_editor.py" <base.png> [--labels <초안라벨.json>] --timeout 570
+```
+- Bash timeout **600000ms**. 브라우저가 열리면: [라벨 추가] → 더블클릭 타이핑 → 드래그 배치 → 툴바에서 서체/굵기/크기/색 → [완료].
+- stdout 마지막 줄: `{"action":"apply","labels":[{text,x,y,size,family,weight,color}]}` (x/y = 이미지 대비 % 중심, size = 원본 px). 이 JSON을 `overlay-<slug>-labels.json` 으로 보존하고, 그대로 (b) 규약의 HTML로 변환한다. `cancel`/`timeout` 이면 (b)로 진행.
+- Claude가 초안 라벨(`--labels`)을 미리 채워 넘기면 사용자는 다듬기만 하면 된다.
+
+**(b) Claude 직접 작성** — `gpt-image/overlay-<slug>.html` 한 파일. 규약:
 - body 크기 = **배경 원본 픽셀 그대로** (`body{width:<W>px;height:<H>px;position:relative}`) — 업스케일 금지(1:1 규칙)
 - 배경은 `<img>` **상대경로** 참조 (폴더째 이동해도 열리게), 라벨은 `position:absolute; left:X%; top:Y%; transform:translate(-50%,-50%)` — % 좌표는 6단계 핀 리뷰의 `x_pct`/`y_pct`와 **같은 좌표계**
 - pill 박스는 CSS 자동 크기(`display:inline-block; padding; border-radius; white-space:nowrap`)에 맡긴다 — **폭 하드코딩 금지**(박스 이탈의 원인)
-- 폰트는 시스템 폰트 기본: `font-family:'Malgun Gothic'` (로딩 실패 모드 없음)
+- 폰트는 위 팔레트에서 선택(기본 맑은 고딕) — §3 Text 축에서 프롬프트에 명기한 서체와 동일해야 한다(생성물에 남는 영문·숫자와 오버레이 한글의 서체 통일). 팔레트 서체 사용 시 fonts.css link 필수
 - **디자인 규율**: 타입 스케일은 2단만(주 라벨 / 캡션·수치), 라벨은 필요 최소 — 넣을까 말까면 뺀다. 리더선·화살표는 실제 관계가 있을 때만. 라벨은 이미지 안의 한적한 영역에 놓고 피사체를 가리지 않는다. 반투명 pill(`rgba`)·`backdrop-filter: blur()`는 배경 위 가독성 확보용으로만 절제해 사용
 
 **3단계 — 캡처 + 1:1 자동 검증**:

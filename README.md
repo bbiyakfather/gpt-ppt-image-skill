@@ -17,6 +17,8 @@ Claude Code용 이미지 생성·수정 스킬. `codex exec`(비대화형)로 Co
 | `SKILL.md` | 스킬 본문 — 워크플로 8단계 + §3-A 한글 폴백, 오류 대응표 |
 | `scripts/review_server.py` | 일회성 로컬 리뷰 서버 (stdlib only). 핀 좌표·댓글을 JSON으로 반환 |
 | `scripts/capture_overlay.py` | 오버레이 HTML → 헤드리스 Chrome 캡처 + 1:1 크기 자동 검증. `--selfcheck` 내장 |
+| `scripts/overlay_editor.py` | 대화형 오버레이 에디터 — 브라우저에서 라벨 타이핑·드래그 배치·서체/굵기/크기/색 선택 → 라벨 JSON 반환 |
+| `scripts/setup_fonts.py` | 폰트 팔레트 설치(나눔스퀘어·G마켓 산스·KoPub 돋움·Noto Sans KR) + `assets/fonts/fonts.css` 생성 |
 
 ## 설치
 
@@ -25,6 +27,7 @@ Claude Code용 이미지 생성·수정 스킬. `codex exec`(비대화형)로 Co
 npm i -g @openai/codex && codex login
 git clone https://github.com/bbiyakfather/codex-image-skill "$HOME/.claude/skills/codex-image"
 python "$HOME/.claude/skills/codex-image/scripts/capture_overlay.py" --selfcheck
+python "$HOME/.claude/skills/codex-image/scripts/setup_fonts.py"   # 폰트 팔레트 설치(1회)
 ```
 
 ## 리뷰 루프
