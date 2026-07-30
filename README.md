@@ -4,9 +4,9 @@ Claude Code용 이미지 생성·수정 스킬. `codex exec`(비대화형)로 Co
 
 > **English**: A Claude Code skill that generates/edits images through Codex CLI's built-in gpt-image-2 (billed to your ChatGPT Plus subscription, no API key). It adds a local pin-comment review popup for revision loops.
 
-## 한글·CJK 텍스트
+## 텍스트
 
-gpt-image-2는 한글을 그리지 못한다(깨진 글자·가짜 글자). 그래서 이미지는 **텍스트 없이** 생성하는 것이 기본이고, 한글 문구가 필요하면 최종 배치처(PPT·한글 문서 등)의 텍스트 박스로 얹는다.
+문구(한글 포함)는 이미지 생성 시 프롬프트에 포함해 **직접 그린다**. 한글·CJK는 gpt-image-2 특성상 오탈자·깨짐이 날 수 있으며, 스킬이 생성 전 리스크를 고지하고 결과에서 글자를 검증한다.
 
 ## 구성
 

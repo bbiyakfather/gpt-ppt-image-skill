@@ -13,7 +13,7 @@ Claude Code에는 이미지 생성이 없다. 이 스킬은 `codex exec`(비대�
 - 사용자를 대신해 `codex login`을 실행하지 않는다. 미로그인 시 안내만 한다.
 - 프롬프트에 세션 내 비밀 정보(API 키, 자격 증명, 개인정보)를 절대 넣지 않는다.
 - 기존 이미지 파일을 덮어쓰지 않는다. 수정본도 항상 새 파일이다.
-- **이미지 안에 한글·CJK 문자를 gpt-image-2로 그리게 하지 않는다.** 글자가 깨지거나 뜻 없는 글자가 섞인다. 한글 문구가 필요하면 이미지는 텍스트 없이 생성하고, 글자는 최종 배치처(PPT·한글 문서 등)의 텍스트 박스로 얹도록 안내한다.
+- **텍스트는 이미지 생성 시 프롬프트에 포함해 함께 그린다** (당분간 이 정책 유지). 단 한글·CJK는 gpt-image-2 특성상 오탈자·깨짐이 날 수 있으므로, 생성 전 리스크를 한 줄 고지하고 결과 검증(5단계)에서 글자를 확인해 보고한다.
 - 콘텐츠 정책 거부 시 우회용 자동 변형 재시도를 하지 않는다.
 - 같은 요청의 자동 재시도는 1회까지. 그 이상은 사용자에게 묻는다.
 
@@ -47,7 +47,7 @@ mkdir -p gpt-image       # 현재 프로젝트 루트에. 실패(권한) 시 중
 | Style/Medium | 스타일·매체 (flat vector, 3D render, watercolor, photorealistic 등) |
 | Color | 색상 팔레트 — 세션에서 언급된 브랜드 색 반영 |
 | Quality | 품질 수식어 (highly detailed, clean edges, professional) |
-| Text | **한글·CJK 문구는 절대 프롬프트에 넣지 않는다.** 영문 단어 몇 개까지는 가능하나 그래도 오탈자가 난다. 기본은 "no text, no letters, no numbers, no labels, no watermark" |
+| Text | 필요한 문구(한글 포함)를 **정확한 철자 그대로** 프롬프트에 명시해 이미지에 직접 그린다. 문구는 따옴표로 감싸 "render exactly this text" 로 지시. 텍스트가 필요 없는 이미지만 "no text, no letters, no watermark" |
 | Format | 용도별 규격 (hero: wide, icon: square+simple silhouette, diagram: clear labels) |
 
 규칙: **세션 컨텍스트**(프로젝트 주제, 논의된 테마·색·톤)를 반영하되, **사용자 명시 요구가 항상 우선**. 최종 프롬프트는 완료 보고에 요약 포함.
@@ -100,7 +100,7 @@ python "$HOME/.claude/skills/codex-image/scripts/review_server.py" gpt-image/<fi
 
 핀 댓글을 모아 아래 `codex exec -i` **한 번**으로 수정한다. 핀 좌표(`x_pct`/`y_pct`)는 영역 서술로 번역한다: x_pct <33 → left / <66 → center / 그 외 right, y_pct 동일하게 top/middle/bottom. 5단계에서 이미지를 봤으므로 **그 위치의 실제 객체명을 함께 명시**한다 (예: "the logo in the upper-left region").
 
-**한글 문구를 고치라는 핀은 재생성으로 해결되지 않는다** (gpt-image-2는 한글을 못 그린다). 해당 핀은 이미지 밖 처리(배치처의 텍스트 박스)를 안내하고, 나머지 핀만 수정에 반영한다.
+텍스트 수정 핀도 동일하게 재생성으로 처리한다(고칠 문구를 따옴표로 정확히 명시). 같은 한글 문구가 2회 연속 깨지면 그 자리에서 중단하고 사용자에게 대안(문구 단순화·영문 전환·텍스트 제거)을 제안한다.
 
 ```bash
 codex exec --skip-git-repo-check -s workspace-write \
