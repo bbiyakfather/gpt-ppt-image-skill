@@ -182,6 +182,16 @@ gpt-image/
 - "기존 파일 덮어쓰기 금지" 규칙 상속: 재캡처는 새 타임스탬프 파일로 저장하고, HTML은 산출물이 아닌 소스로 간주해 in-place 수정을 허용한다(대신 최종 확정 시점의 HTML이 최종 PNG와 항상 일치해야 한다).
 - 최종 보고에는 세 파일 경로를 모두 명시해, 이후 세션에서 "문구만 바꿔줘" 요청 시 HTML부터 찾게 한다.
 
+### 8.7 대안 스택: SVG 컨테이너 + resvg (2026-07-30 추가 조사 — 채택 권고)
+
+사용자 제안("생성 이미지의 SVG화 + 폰트 통일")을 GitHub 선행 도구로 검증한 결과:
+
+- **트레이싱(진짜 벡터화)은 비채택**: visioncortex/vtracer(6,506★)가 photo 프리셋까지 제공하는 성숙 도구지만, 사진풍 이미지는 색 군집 포스터화로 원본 충실도가 깨진다. 정확한 한글 텍스트라는 목표에 벡터화 자체가 기여하지 않는다.
+- **SVG 컨테이너 방식 채택 권고**: 배경 PNG를 `<image>`로 1:1 임베드하고 텍스트를 네이티브 `<text>`로 얹은 SVG를 **resvg**(linebender/resvg 3,973★, `resvg-win64.zip` 단일 실행파일 v0.47.0 확인)로 PNG 렌더링. satori→resvg는 og-image 생태계의 검증된 표준 파이프라인이며, 우리는 satori 대신 SVG를 직접 작성해 뒷단만 재사용한다. Node 통합이 필요하면 thx/resvg-js(1,965★).
+- **Playwright 캡처 대비 이점**: 브라우저 기동 없음(단일 exe, 수백 ms), viewport·dSF 계산 불필요(SVG 좌표 = 출력 픽셀), `--font-file`로 폰트 결정론적 강제. **한계**: CSS `backdrop-filter` 같은 효과는 SVG 필터(feGaussianBlur)로 대체해야 하고 표현력이 HTML보다 낮다.
+- **개정된 캡처 폴백 체인**: resvg(1순위) → Playwright HTML 캡처(고급 스타일 필요 시) → Chrome 헤드리스 CLI. FR-4·FR-7·10장 MVP의 `capture_overlay.mjs`는 resvg 호출 스크립트로 대체 가능(자작 코드가 더 줄어든다).
+- **폰트 통일 전략(이질감 축소)**: gpt-image-2에 특정 폰트 강제는 불가능(모델에 폰트 개념 없음). 생성 프롬프트에 "clean geometric sans-serif typography" 류 스타일 유도를 넣어 모델이 그리는 영문·숫자의 인상을 맞추고, 오버레이 한글은 같은 계열 실폰트(Pretendard/맑은 고딕)를 쓴다.
+
 ## 9. 기술 고려사항
 
 ### 통합 지점
