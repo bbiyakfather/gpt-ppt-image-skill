@@ -221,4 +221,4 @@ Use your image generation tool with the attached image as reference and save the
 | 뷰포트 프로브 실패 (§3-B) | layout_kit "뷰포트 프로브 실패" | 1회 재시도 → 실패 시 Chrome 버전 보고(147 실측 검증). 캡처 없이 .pptx만 진행 가능 |
 | 배경 예약 영역 오염 (§3-B) | 3) 게이트에서 박스 영역에 물체·글자 | 해당 라벨 scrim 켜기(쿼터 0) 또는 사용자 승인 후 1회 재생성 |
 
-검증된 환경: codex-cli 0.144.1~0.145.0, Chrome 147, python-pptx 1.0.2, Python 3.13, Windows Git Bash (스킬의 셸 커맨드는 전부 Git Bash 기준 — layout_kit.py 내부는 셸 미경유 subprocess라 셸 무관). 동작이 다르면 `codex --version`부터 의심할 것.
+검증된 환경: codex-cli 0.144.1~0.145.0, Chrome 147, python-pptx 1.0.2, Python 3.12~3.13, Windows Git Bash (스킬의 셸 커맨드는 전부 Git Bash 기준 — layout_kit.py 내부는 셸 미경유 subprocess라 셸 무관). 동작이 다르면 `codex --version`부터 의심할 것.
