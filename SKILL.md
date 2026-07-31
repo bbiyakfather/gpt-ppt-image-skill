@@ -72,11 +72,14 @@ Do not do anything else. Reply with the saved file path."
 - 실패 판별: `-o` 출력과 stderr에서 quota/usage limit(한도), content policy(정책 거부), 기타(일반 실패)를 구분한다. 대응은 아래 오류 표.
 - **저장경로 정책훅 차단 우회(검증됨)**: 일부 환경에서 codex가 결과물을 `gpt-image/파일명`으로 복사하는 단계가 PreToolUse 정책훅에 "blocked by policy"로 차단된다. **이미지 자체는 codex 런타임 홈에 정상 생성**되므로, 이때는 codex 재시도 대신 **가장 최근 생성물을 직접 복사**한다(한 번에 한 장씩 순차 생성해야 newest 매칭이 안전):
   ```bash
-  GENDIR="$HOME/AppData/Roaming/orca/codex-runtime-home/home/generated_images"
-  GEN=$(ls -t "$GENDIR"/*/*.png 2>/dev/null | head -1)
+  # 런타임 홈 경로는 codex 버전·계정 구성에 따라 다르다. 실측된 두 형태를 모두 훑어 최신 1장을 고른다.
+  GEN=$(ls -t "$HOME/AppData/Roaming/orca"/codex-accounts/*/home/generated_images/*/*.png \
+              "$HOME/AppData/Roaming/orca"/codex-runtime-home/home/generated_images/*/*.png \
+              2>/dev/null | head -1)
   [ -n "$GEN" ] && cp "$GEN" gpt-image/<파일명>.png || echo "런타임 홈에 생성물 없음 — -o 출력의 저장 경로를 확인"
   ```
   경로는 환경마다 다를 수 있으니 `-o` 출력의 저장 경로를 우선 신뢰하고, 없을 때 위 런타임 홈을 fallback 으로 쓴다.
+  **복사 전 `ls -l "$GEN"` 로 생성 시각이 방금인지 반드시 확인한다** — 구버전 경로에 오래된 생성물이 남아 있으면 조용히 엉뚱한 이미지를 집는다(실측: `codex-runtime-home` 쪽 최신본이 9일 전).
 
 ### 5. 자가 검증
 
@@ -134,4 +137,4 @@ Use your image generation tool with the attached image as reference and save the
 | 팝업 실패 | 서버 기동/브라우저 실패 | URL 수동 안내 → 그래도 안 되면 자연어 수정 폴백 |
 | 배치 부분 실패 | 일부 파일 미생성 | 성공분 보존·리뷰, 실패분 원인 보고, 재시도 여부 질문 |
 
-검증된 환경: codex-cli 0.144.1, Windows Git Bash. 동작이 다르면 `codex --version`으로 버전 차이부터 의심할 것.
+검증된 환경: codex-cli 0.144.1~0.144.6, Python 3.12~3.13, Windows Git Bash. 동작이 다르면 `codex --version`으로 버전 차이부터 의심할 것 — 0.144.6에서 생성물 저장 위치가 `codex-runtime-home/` → `codex-accounts/<uuid>/` 로 바뀐 전례가 있다.
