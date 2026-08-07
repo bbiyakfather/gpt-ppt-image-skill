@@ -38,14 +38,18 @@ Claude Code용 이미지·PPT 생성·수정 스킬. `codex exec`(비대화형)�
 | `scripts/review_server.py` | 일회성 로컬 리뷰 서버 (stdlib only). 핀 좌표·붓 마스크를 JSON으로 반환 |
 | `scripts/repair_text.py` | 핀·붓 기반 국소 텍스트 수리 |
 | `scripts/assemble_ppt.py` | 슬라이드 이미지 + 발표노트 → .pptx |
-| `scripts/check_prompt.mjs` | 프롬프트 산출물 검증기 |
+| `scripts/check_prompt.mjs` | 프롬프트 산출물 검증기 (Node) |
+| `scripts/latest_image.py` | codex 런타임 홈에서 방금 생성물 회수 (신선도 게이트) |
+| `scripts/layout_kit.py` | **트랙 D** — layout.json → 스케치 / 폰트 합성 PNG / 편집 가능 .pptx |
+| `scripts/sync_skill.py` | 저장소 → 설치된 스킬 디렉터리 동기화 (`--check` 는 커밋 전 게이트) |
+| `scripts/test_coords.py` | 붓 좌표 정규화→래스터화 수학 검증 (review_server 의 JS 로직 포팅) |
 
 ## 설치
 
 ```bash
-# 요구: Codex CLI 로그인(ChatGPT 계정), Python 3.12+
+# 요구: Codex CLI 로그인(ChatGPT 계정), Python 3.12+, Node 20+ (프롬프트 린터용)
 npm i -g @openai/codex && codex login
-git clone https://github.com/bbiyakfather/codex-image-skill "$HOME/.claude/skills/gpt-ppt-image"
+git clone https://github.com/bbiyakfather/gpt-ppt-image-skill "$HOME/.claude/skills/gpt-ppt-image"
 
 # 국소 수리용 (붓만 쓸 거면 easyocr 없이도 된다)
 pip install opencv-python Pillow

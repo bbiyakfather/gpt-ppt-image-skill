@@ -114,7 +114,10 @@ function validateText(raw, opts = {}, rec = null) {
   if (quotes.length >= 2 && !has(/(상단|하단|중앙|좌측|우측|타이틀|부제|서브|라벨|캡션|헤드|말풍선|SFX|headline|subhead|callout|billing|caption|centered|upper|lower)/i)) err(warnings, "W-TEXT-ROLE", "따옴표 카피 2개 이상인데 롤 라벨(타이틀/부제/위치)이 없음.");
   const mix = quotes.find((q) => /[가-힣]/.test(q) && /[A-Za-z]/.test(q));
   if (mix) err(warnings, "W-TEXT-MIXLANG", `한 따옴표 문자열 안 KO+EN 혼합: "${mix}" — 언어별로 분리.`);
-  if ((renderText || has(/(텍스트|한글|타이틀|부제|라벨|말풍선|내레이션|SFX|카피|문구)/)) && !has(/(또렷|가독|한 번씩만|1~2개만|legible|appears once)/))
+  // "텍스트 없음" 은 텍스트를 그리라는 뜻이 아니다 — 부정어가 붙은 매치는 트리거에서 뺀다.
+  // (이 스킬이 권장하는 긍정형 표현이라 정상 프롬프트에서 오탐이 났다)
+  const textCue = /(텍스트|한글|타이틀|부제|라벨|말풍선|내레이션|SFX|카피|문구)(?!\s*(없|안|배제|제외|미포함))/;
+  if ((renderText || has(textCue)) && !has(/(또렷|가독|한 번씩만|1~2개만|legible|appears once)/))
     err(warnings, "W-TEXT-GUARD", "텍스트가 있는데 가독성/반복 가드가 없음 (예: \"모든 텍스트는 한 번씩만, 또렷하게\").");
 
   checkNegatives(p, tier, renderText, errors);
@@ -162,8 +165,12 @@ function nearestSize(size) {
 
 function validateRecord(rec, ids, opts) {
   const errors = [], warnings = [];
-  for (const f of ["id", "category", "ar", "size", "quality", "full_prompt", "output_path"])
+  // 타입까지 본다. 문자열이 아니면 아래 `typeof === "string"` 게이트들이 통째로 건너뛰어
+  // 검사 0건으로 ok:true 가 나온다 (예: full_prompt:12345 → 모든 텍스트 룰 우회).
+  for (const f of ["id", "category", "ar", "size", "quality", "full_prompt", "output_path"]) {
     if (rec[f] === undefined || rec[f] === null || rec[f] === "") err(errors, "E-REC-FIELD", `필수 필드 누락: ${f}.`);
+    else if (typeof rec[f] !== "string") err(errors, "E-REC-TYPE", `${f}는 문자열이어야 함 (받은 타입: ${Array.isArray(rec[f]) ? "array" : typeof rec[f]}).`);
+  }
   if (rec.id !== undefined) { if (ids.has(rec.id)) err(errors, "E-REC-DUPID", `중복 id: ${rec.id}.`); ids.add(rec.id); }
   if (rec.quality === "auto") err(errors, "E-REC-QUALITY", 'quality "auto" 금지 — high/medium/low를 명시.');
   if (typeof rec.size === "string") {

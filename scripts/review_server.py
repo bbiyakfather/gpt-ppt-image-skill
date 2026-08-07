@@ -136,7 +136,7 @@ function showGallery(){
     const rn = regions[i].filter(r=>r.strokes.length).length;
     if(rn)                b.push('<span class="badge2">영역 '+rn+'</span>');
     return '<div class="thumb" onclick="showImage('+i+')"><img src="/img/'+i+'">'+
-           '<div class="cap"><span>'+im.name+'</span><span>'+b.join(' ')+'</span></div></div>';
+           '<div class="cap"><span>'+esc(im.name)+'</span><span>'+b.join(' ')+'</span></div></div>';
   }).join('') + '</div>';
 }
 
@@ -173,7 +173,9 @@ let bound = null;
 function bindPaint(pc){
   if(bound === pc) return;
   bound = pc;
-  let drawing = false;
+  // pointerId -> 그 손가락/펜이 그리고 있는 stroke 객체. 멀티터치에서 "마지막으로
+  // push된 stroke"에 아무 포인터나 이어붙이면 두 손가락의 선이 뒤섞이므로 포인터별로 추적한다.
+  const active = new Map();
   const pos = ev => {
     const r = pc.getBoundingClientRect();
     return [(ev.clientX-r.left)/r.width, (ev.clientY-r.top)/r.height];   // 0..1 정규화
@@ -187,20 +189,22 @@ function bindPaint(pc){
     }
     if(activeRegion < 0) newRegion();
     if(erasing){ eraseAt(x,y); render(); return; }
-    drawing = true;
     pc.setPointerCapture(ev.pointerId);
     const r = document.getElementById('bsize').value / pc.width / 2;   // 반경도 정규화
-    regions[cur][activeRegion].strokes.push({pts:[[x,y]], r:r});
+    const stroke = {pts:[[x,y]], r:r};
+    regions[cur][activeRegion].strokes.push(stroke);
+    active.set(ev.pointerId, stroke);
     render();
   });
   pc.addEventListener('pointermove', ev=>{
-    if(!drawing || mode!=='brush') return;
+    if(mode!=='brush') return;
+    const stroke = active.get(ev.pointerId);
+    if(!stroke) return;
     const [x,y] = pos(ev);
-    const st = regions[cur][activeRegion].strokes;
-    st[st.length-1].pts.push([x,y]);
+    stroke.pts.push([x,y]);
     render();
   });
-  const stop = ()=>{ drawing = false; };
+  const stop = ev=>{ active.delete(ev.pointerId); };
   pc.addEventListener('pointerup', stop);
   pc.addEventListener('pointercancel', stop);
   pc.addEventListener('pointerleave', stop);
@@ -208,12 +212,14 @@ function bindPaint(pc){
 
 function eraseAt(x,y){
   // 지우개: 커서에 걸리는 스트로크를 통째로 제거 (픽셀 단위 지우기는 과함)
+  // 활성 영역만 지운다 — 다른 영역도 낮은 알파로 겹쳐 보이므로 전체를 훑으면
+  // 화면에 안 보이는(비활성) 영역의 획까지 조용히 사라진다.
   const pc = document.getElementById('paint');
   const tol = document.getElementById('bsize').value / pc.width / 2;
-  for(const rg of regions[cur]){
-    rg.strokes = rg.strokes.filter(s =>
-      !s.pts.some(p => Math.hypot(p[0]-x, p[1]-y) < s.r + tol));
-  }
+  const rg = regions[cur][activeRegion];
+  if(!rg) return;
+  rg.strokes = rg.strokes.filter(s =>
+    !s.pts.some(p => Math.hypot(p[0]-x, p[1]-y) < s.r + tol));
 }
 
 function paintStrokes(ctx, w, h, strokes, style){
@@ -282,8 +288,11 @@ function delRegion(n){
   render();
 }
 
-function maskPNG(i, rg){
+function maskPNG(rg){
   // 원본 해상도로 재래스터화 — 화면 표시 배율과 무관하게 정확한 마스크가 나온다.
+  // 항상 지금 화면에 떠 있는 theimg(=cur) 기준으로만 그린다 — i 매개변수는
+  // 호출부가 cur 와 다른 이미지를 실수로 넘겨도 조용히 틀린 해상도로 그려버리는
+  // 함정이었으므로 아예 없앴다. 호출부는 i===cur 조건에서만 이 함수를 불러야 한다.
   const img = document.getElementById('theimg');
   const w = img.naturalWidth, h = img.naturalHeight;
   const c = document.createElement('canvas');
@@ -303,7 +312,7 @@ function submit(action){
       pins: pins[i].map((p,n)=>({n:n+1, x_pct:+p.x.toFixed(1), y_pct:+p.y.toFixed(1),
                                  comment:p.comment.trim()})),
       regions: rs.map((r,n)=>({n:n+1, comment:r.comment.trim(),
-                               png: i===cur ? maskPNG(i,r) : r._png}))});
+                               png: i===cur ? maskPNG(r) : r._png}))});
   }
   if(action==='edit'){
     if(!imgs.length){
@@ -344,7 +353,7 @@ function submit(action){
 function freezeCurrent(){
   const img = document.getElementById('theimg');
   if(!img || !img.naturalWidth) return;
-  regions[cur].forEach(rg=>{ if(rg.strokes.length) rg._png = maskPNG(cur, rg); });
+  regions[cur].forEach(rg=>{ if(rg.strokes.length) rg._png = maskPNG(rg); });
 }
 const _showGallery = showGallery, _showImage = showImage;
 showGallery = function(){ freezeCurrent(); _showGallery(); };
@@ -391,6 +400,11 @@ def main():
         [{"name": os.path.basename(p)} for p in paths], ensure_ascii=True))
 
     class Handler(BaseHTTPRequestHandler):
+        # 소켓 읽기에 마감을 건다. 없으면 Content-Length 만큼 안 보내고 연결을 열어둔
+        # 클라이언트에서 rfile.read() 가 영원히 막히고, HTTPServer 는 단일 스레드라
+        # srv.shutdown() 까지 함께 멎어 --timeout 이 지나도 결과 JSON 이 안 나온다.
+        timeout = 30
+
         def log_message(self, *args):  # silence request logging
             pass
 
@@ -423,11 +437,17 @@ def main():
                 self._send(404, "text/plain", b"not found")
                 return
             try:
-                body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                length = int(self.headers.get("Content-Length", 0))
+                if length > MAX_BODY:
+                    raise ValueError(f"본문이 너무 큼: {length} > {MAX_BODY}")
+                body = self.rfile.read(length)
                 data = json.loads(body.decode("utf-8"))
                 images = []
                 for img in data.get("images", []):
                     i = int(img["idx"])
+                    if not 0 <= i < len(paths):
+                        # 음수는 파이썬 리스트에서 조용히 뒤에서부터 잡혀 엉뚱한 파일에 붙는다
+                        raise IndexError(f"idx 범위 밖: {i}")
                     stem = os.path.splitext(os.path.basename(paths[i]))[0]
                     out = []
                     for rg in img.get("regions", []):
@@ -438,6 +458,12 @@ def main():
                     images.append({"file": paths[i],
                                    "pins": img.get("pins", []),
                                    "regions": out})
+                action = data.get("action", "none")
+                if action == "edit" and not any(
+                        im["pins"] or im["regions"] for im in images):
+                    # 클라이언트 JS 만 믿으면 직접/재시도 POST 로 빈 edit 이 그대로
+                    # "사용자 지시"로 둔갑해 통과한다 — 서버에서도 같은 규칙을 강제한다
+                    raise ValueError("edit 요청인데 핀도 영역도 없음")
             except (ValueError, KeyError, IndexError, TypeError,
                     binascii.Error, OSError) as e:
                 # bad submission: report and keep waiting instead of hanging silently
@@ -448,6 +474,8 @@ def main():
                            "reason": "user", "images": images})
             self._send(200, "application/json", b'{"ok":true}')
             done.set()
+
+    MAX_BODY = 64 * 1024 * 1024   # 마스크 PNG 는 data URI 로 오지만 이 이상은 사고다
 
     srv = HTTPServer(("127.0.0.1", 0), Handler)
     url = "http://127.0.0.1:%d/" % srv.server_port

@@ -5,7 +5,7 @@
 ## 1. gpt-image-2 모델 팩트 (2026)
 
 - **하드 제약 4종**: 최대변 3840px · 각 변 16배수 · 비율 ≤3:1 · 총픽셀 655,360~8,294,400. 사이즈락 6종은 이 제약의 **안전 부분집합** — 6종 안에서는 하드 제약을 위반할 수 없다. (검증기: `E-SIZE-EDGE / E-SIZE-MULT / E-SIZE-RATIO / E-SIZE-PIXELS`, 6종 밖은 `E-SIZE-LOCK`, `--api` 시 warning 강등.)
-- **투명 배경**: gpt-image-2 **미지원** → 투명 PNG가 필요하면 gpt-image-1.5 CLI 폴백. C9 아이콘 작업 시 특히 주의(투명 요구면 폴백 경로 명시).
+- **투명 배경**: gpt-image-2 **미지원**. 투명 PNG가 필요하면 이 스킬로는 못 만든다 — 단색 배경으로 생성한 뒤 사용자가 직접 누끼를 따야 한다는 점을 착수 전에 알린다. (API 키가 필요한 외부 CLI 폴백은 이 스킬의 절대 규칙 위반이라 쓰지 않는다.)
 - **quality**: 작은/밀집 텍스트는 `medium` 이상, 다컷·미세 글자는 `high`. `auto` 금지 유지(`E-REC-QUALITY`).
 - **Codex `$imagegen`은 플래그 없음** — size/quality는 산문 지시 + jsonl 필드로 전달한다.
 - **배치 ≤10장/호출.** 초과분은 호출을 쪼갠다.
@@ -22,12 +22,11 @@
   "palette": ["#F7F4EC", "#B76E79"],
   "ar": "3:4", "size": "1024x1536",      // size=API 파라미터, ar=프롬프트 끝 토큰
   "quality": "medium",                    // 시드 medium → 최종 high. auto 금지
-  "output_format": "webp", "output_compression": 82,   // 텍스트 많으면 88
   "full_prompt": "<순수 서술 ... 끝에 AR 3:4>",
   "labels": ["TRENCH COAT"], "korean_copy": "오늘 더 따뜻해요",
   "status": "draft",   // draft→queued→generated→approved|rejected→retry
   "qa": {"goal_fit": 0, "text_accuracy": 0, "material_realism": 0, "layout": 0},
-  "output_path": "04_output/webp/C1/....webp",
+  "output_path": "gpt-image/C1/C1-LEVITATION-001.png",   // SKILL.md 4단계 저장 규칙과 동일 계열
   "teaching_point": "..."   // 교육용일 때만, 20~80자
 }
 ```
@@ -49,7 +48,7 @@ AR 4:5
 ```
 이걸 담은 jsonl 1줄:
 ```json
-{"id":"C3-EVENT-001","category":"C3","cut_type":"event_promo","title":"봄밤 야시장","format":"A","tier":1,"lane":"standard","palette":["#0F1D30","#F7F4EC","#B76E79"],"ar":"4:5","size":"1024x1536","quality":"high","output_format":"webp","output_compression":88,"full_prompt":"한국어 이벤트 포스터, 상업 인쇄 완성도. Scene: ... AR 4:5","korean_copy":"봄밤 야시장","status":"draft","qa":{"goal_fit":0,"text_accuracy":0,"material_realism":0,"layout":0},"output_path":"out/C3-EVENT-001.webp"}
+{"id":"C3-EVENT-001","category":"C3","cut_type":"event_promo","title":"봄밤 야시장","format":"A","tier":1,"lane":"standard","palette":["#0F1D30","#F7F4EC","#B76E79"],"ar":"4:5","size":"1024x1536","quality":"high","full_prompt":"한국어 이벤트 포스터, 상업 인쇄 완성도. Scene: ... AR 4:5","korean_copy":"봄밤 야시장","status":"draft","qa":{"goal_fit":0,"text_accuracy":0,"material_realism":0,"layout":0},"output_path":"gpt-image/C3/C3-EVENT-001.png"}
 ```
 > `full_prompt`만 떼어 `node scripts/check_prompt.mjs`에 넣으면 `ok:true`여야 한다.
 
@@ -58,7 +57,7 @@ AR 4:5
 플랫 콤마형 단문(350~450자), SAFETY_ASSERT가 피사체절 선두, NEGATIVE_TAIL이 `AR 2:3` 직전 정확히 1회:
 
 ```json
-{"id":"C1-HWABO-001","category":"C1","cut_type":"editorial_solo","title":"아침 창가 라운지웨어","format":"B","tier":2,"lane":"editorial","palette":["#F7F4EC","#D9C7B8","#B76E79"],"ar":"2:3","size":"1024x1536","quality":"high","output_format":"webp","output_compression":82,"full_prompt":"adult Korean woman in her late 20s, 25+, original character, non-nude fashion editorial styling, fully opaque fabric, covered chest line, editorial upright pose, 갸름한 얼굴, 다크브라운 단발 헤어, 한국 남성지풍 클린 화보 컷, 창가의 아침빛 아래 커튼을 잡은 포즈, 크림 새틴 라운지웨어 셋업, 무릎 위 3/4 구도, soft window light, shallow DoF, 팔레트 #F7F4EC #D9C7B8 #B76E79, subtle film grain, no nudity, no nipple or genital exposure, no wardrobe malfunction, no extra people, no text, no watermark, AR 2:3","status":"draft","qa":{"goal_fit":0,"text_accuracy":0,"material_realism":0,"layout":0},"output_path":"out/C1-HWABO-001.webp"}
+{"id":"C1-HWABO-001","category":"C1","cut_type":"editorial_solo","title":"아침 창가 라운지웨어","format":"B","tier":2,"lane":"editorial","palette":["#F7F4EC","#D9C7B8","#B76E79"],"ar":"2:3","size":"1024x1536","quality":"high","full_prompt":"adult Korean woman in her late 20s, 25+, original character, non-nude fashion editorial styling, fully opaque fabric, covered chest line, editorial upright pose, 갸름한 얼굴, 다크브라운 단발 헤어, 한국 남성지풍 클린 화보 컷, 창가의 아침빛 아래 커튼을 잡은 포즈, 크림 새틴 라운지웨어 셋업, 무릎 위 3/4 구도, soft window light, shallow DoF, 팔레트 #F7F4EC #D9C7B8 #B76E79, subtle film grain, no nudity, no nipple or genital exposure, no wardrobe malfunction, no extra people, no text, no watermark, AR 2:3","status":"draft","qa":{"goal_fit":0,"text_accuracy":0,"material_realism":0,"layout":0},"output_path":"gpt-image/C1/C1-HWABO-001.png"}
 ```
 - 슬롯 순서: 피사체(SAFETY_ASSERT)→얼굴→헤어→장르앵커→장면/포즈→의상→구도→조명→팔레트 #HEX×3~5→질감→Tier-2 tail→AR. 상세는 `references/editorial-hwabo.md`.
 - tail은 SAFETY_ASSERT와 **페어**(단독 = `E-TIER2-PAIR`), 순서 보존 부분집합만 허용, 위치는 AR 직전(`E-TIER2-POS`).
@@ -72,11 +71,15 @@ AR 4:5
 
 ## 6. codex 호출 골격
 
-배치는 챕터 단위(한 세션 N=8~20개, 호출당 ≤10장), `codex exec --sandbox workspace-write`. full_prompt 끝에 붙인다:
+배치는 챕터 단위(한 세션 N=8~20개, 호출당 ≤10장), 이미지 1장 = `codex exec` 1회 — SKILL.md 4단계 골격과 완전히 동일하다:
 ```
-TASK: Use the image_generation tool to create the image described above.
-After generation, copy the output file to this exact path: {output_path}.
-Reply only with the saved file path.
+codex exec --skip-git-repo-check -s workspace-write \
+  -o "<세션 스크래치패드>/codex-img-<id>.txt" \
+  "Use your image generation tool to create an image and save it to {output_path}.
+Prompt: {full_prompt}
+Resolution: {size}. Aspect ratio: {ar}.
+Do not do anything else. Reply with the saved file path."
 ```
-- codex는 **복사만**(중간 요약 금지), 이미지당 `SAVED: <path>` 1줄, 실패 `FAILED: <id> <reason>`, 끝에 `DONE chapter={slug} success=N failures=N`.
-- 대량 생성·병렬 스폰은 **[codex-imagegen]** 스킬.
+- codex의 응답은 저장 경로 1줄뿐이다(SKILL.md 4단계 프로토콜). 별도의 `SAVED:`/`FAILED:`/`DONE` 토큰을 요구하지 않는다 — 그건 이 스킬이 쓰지 않는 협약이다.
+- 진행 상황(`n/전체`)과 성공/실패 집계는 codex가 아니라 **호출하는 에이전트가** 장마다 보고한다.
+- **병렬 스폰 금지.** 대량이어도 한 장씩 순차 생성한다 (SKILL.md 절대 규칙) — 동시 생성은 런타임 홈 회수를 깨뜨려 엉뚱한 이미지를 조용히 가져온다.

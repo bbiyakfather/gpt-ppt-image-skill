@@ -69,7 +69,13 @@ def parse_pin(s):
     coord, sep, text = s.partition(":")
     if not sep or not text.strip():
         raise ValueError(f"핀 형식 오류 (x,y:text): {s!r}")
-    x, y = (float(v) for v in coord.split(","))
+    parts = coord.split(",")
+    if len(parts) != 2:
+        raise ValueError(f"핀 좌표는 'x,y' 두 개여야 함 (받은 값: {coord!r}) — 예: 62,88:문구")
+    try:
+        x, y = (float(v) for v in parts)
+    except ValueError:
+        raise ValueError(f"핀 좌표가 숫자가 아님: {coord!r} — 예: 62,88:문구") from None
     return x, y, text.strip()
 
 
@@ -100,9 +106,14 @@ def mask_to_rect(mask):
 
 
 def quad_to_rect(quad):
+    """OCR 사각형(4점) -> (x0,y0,x1,y1). mask_to_rect 와 같은 배타적 경계(+1).
+
+    +1 이 없으면 검출 박스의 우/하단 1px 이 늘 잘린다. rect 엔진은 pad 가
+    흡수하지만 sam 엔진은 이 값을 박스 프롬프트에 그대로 써서 정밀도가 깎인다.
+    """
     xs = [p[0] for p in quad]
     ys = [p[1] for p in quad]
-    return int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))
+    return int(min(xs)), int(min(ys)), int(max(xs)) + 1, int(max(ys)) + 1
 
 
 def padded_rect(rect, pad, shape):
@@ -128,6 +139,17 @@ def match_pin_to_box(px, py, rects):
     return None
 
 
+def width_overflow_warning(idx, rendered_w, box_w):
+    """렌더된 문구 폭이 WIDTH_OVERFLOW 허용치를 넘으면 경고 문자열, 아니면 None.
+
+    rewrite_texts는 이미지 경계까지만 클램프하고 인접 박스는 모른다 — 여기서
+    넘침을 알려야 사람/에이전트가 문구를 줄이는 판단을 할 수 있다.
+    """
+    if box_w <= 0 or rendered_w <= box_w * WIDTH_OVERFLOW:
+        return None
+    return f"box[{idx}] 교체 문구 폭이 원본 박스의 {rendered_w / box_w:.2f}배 — 인접 요소와 겹칠 수 있음 (문구를 줄이세요)"
+
+
 def resolve_engine(choice, cuda_available, sam_installed):
     """auto: GPU와 segment-anything이 모두 있으면 sam, 아니면 rect. 명시 선택은 그대로."""
     if choice != "auto":
@@ -137,8 +159,22 @@ def resolve_engine(choice, cuda_available, sam_installed):
 
 # ── 이미지 헬퍼 (cv2/PIL 지연 임포트: --selftest 를 의존성 없이 돌리기 위함) ──────
 
+def _require(mod_name, pip_name):
+    """무거운 의존성을 함수 안에서 지연 임포트 — 미설치 시 raw traceback 대신 설치 안내.
+
+    호출부마다 try/except를 반복하는 대신 한 곳에서 처리 (assemble_ppt.py의
+    python-pptx 가드와 같은 톤).
+    """
+    import importlib
+
+    try:
+        return importlib.import_module(mod_name)
+    except ImportError:
+        sys.exit(f"{pip_name} 미설치 — pip install {pip_name}")
+
+
 def load_bgr(path):
-    import cv2
+    cv2 = _require("cv2", "opencv-python")
     import numpy as np
 
     src = Path(path)
@@ -155,7 +191,7 @@ def load_user_mask(path, shape):
 
     팝업 canvas 해상도가 원본과 다를 수 있으므로 항상 원본 크기로 맞춘다.
     """
-    import cv2
+    cv2 = _require("cv2", "opencv-python")
     import numpy as np
 
     p = Path(path)
@@ -223,8 +259,9 @@ def fit_font(text, box_w, box_h, font_path):
 def _get_sam_predictor():
     global _SAM_PREDICTOR
     if _SAM_PREDICTOR is None:
-        import torch
-        from segment_anything import SamPredictor, sam_model_registry
+        torch = _require("torch", "torch")
+        sam_pkg = _require("segment_anything", "segment-anything")
+        SamPredictor, sam_model_registry = sam_pkg.SamPredictor, sam_pkg.sam_model_registry
 
         SAM_CKPT.parent.mkdir(parents=True, exist_ok=True)
         if not SAM_CKPT.is_file():
@@ -240,7 +277,7 @@ def _get_sam_predictor():
 
 def predict_glyph_mask(predictor, rect, pad, shape):
     """SAM box 프롬프트로 획 단위 마스크. 퇴화면 None → 호출부가 rect 폴백."""
-    import cv2
+    cv2 = _require("cv2", "opencv-python")
     import numpy as np
 
     x0, y0, x1, y1 = rect
@@ -260,7 +297,7 @@ def predict_glyph_mask(predictor, rect, pad, shape):
 def detect_text_boxes(img, use_gpu):
     """easyocr(CRAFT)로 텍스트 박스 전부 검출. (배열을 넘긴다 — cv2.imread는 한글 경로 불가)"""
     print("텍스트 박스 검출 중 (easyocr/CRAFT, %s)…" % ("GPU" if use_gpu else "CPU"))
-    import easyocr
+    easyocr = _require("easyocr", "easyocr")
 
     reader = easyocr.Reader(["ko", "en"], gpu=use_gpu, verbose=False)
     results = reader.readtext(img)
@@ -290,7 +327,7 @@ def build_mask(img, rects, jobs, engine, user_masks=None):
     붓으로 칠한 영역(user_masks)은 사용자가 이미 정확히 지정한 것이므로
     SAM/사각형 추정을 거치지 않고 그대로 쓴다.
     """
-    import cv2
+    cv2 = _require("cv2", "opencv-python")
     import numpy as np
 
     user_masks = user_masks or {}
@@ -321,7 +358,7 @@ def build_mask(img, rects, jobs, engine, user_masks=None):
 
 def rewrite_texts(fixed_bgr, rects, jobs, font_path):
     """inpaint된 이미지 위에 실폰트로 교체 문구 재기입 (박스 중앙 정렬)."""
-    import cv2
+    cv2 = _require("cv2", "opencv-python")
     from PIL import Image, ImageDraw
 
     w = fixed_bgr.shape[1]
@@ -332,6 +369,9 @@ def rewrite_texts(fixed_bgr, rects, jobs, font_path):
         font = fit_font(text, x1 - x0, y1 - y0, font_path)
         bb = draw.textbbox((0, 0), text, font=font)
         tw = bb[2] - bb[0]
+        warn = width_overflow_warning(idx, tw, x1 - x0)
+        if warn:
+            print(f"  경고: {warn}")
         tx = x0 + ((x1 - x0) - tw) / 2 - bb[0]
         tx = min(max(tx, 4), w - tw - 4)  # 폭 넘침 허용분을 이미지 경계 안으로 클램프
         ty = y0 + ((y1 - y0) - (bb[3] - bb[1])) / 2 - bb[1]
@@ -355,8 +395,48 @@ def next_out_path(src, out_path):
     return out
 
 
-def repair(img_path, pins, masks=None, out_path=None, font_path=None, engine="auto"):
-    import cv2
+FLAT_TOL = 6.0     # 주변 링의 채널별 표준편차가 이 이하면 "단색"으로 본다
+RING_PX = 25       # 배경 판정에 쓰는 마스크 바깥 링의 두께
+
+
+def ring_stats(img, mask, ring_px=RING_PX):
+    """마스크 바로 바깥 링의 (표준편차 최대, 중앙값). 링이 비면 (None, None)."""
+    cv2 = _require("cv2", "opencv-python")
+    import numpy as np
+
+    ring = cv2.dilate(mask, np.ones((ring_px, ring_px), np.uint8)) - mask
+    px = img[ring > 0]
+    if len(px) == 0:
+        return None, None
+    return float(px.std(axis=0).max()), np.median(px, axis=0)
+
+
+def restore_background(img, mask, fill="auto"):
+    """마스크 영역의 배경을 복원. -> (이미지, 사용한 방식)
+
+    단색 배경에서는 cv2.inpaint 가 채널당 최대 ±7/255 를 남긴다 — 그게 실측된
+    "옅은 사각 자국"이다. 주변이 균일하면 그 색으로 그냥 채우는 게 오차 0 이다.
+    배경이 복잡하면 단색 채우기가 오히려 판을 깨므로 inpaint 로 넘긴다.
+    """
+    cv2 = _require("cv2", "opencv-python")
+
+    if fill != "inpaint":
+        std, med = ring_stats(img, mask)
+        if std is not None and (fill == "solid" or std <= FLAT_TOL):
+            out = img.copy()
+            out[mask > 0] = med.astype(img.dtype)
+            return out, f"단색 채우기 (주변 편차 {std:.1f})"
+        if fill == "solid":
+            return img.copy(), "단색 채우기 불가(링 없음) — 원본 유지"
+    fixed = cv2.inpaint(img, mask, INPAINT_RADIUS, cv2.INPAINT_TELEA)
+    std, _ = ring_stats(img, mask)
+    detail = f"주변 편차 {std:.1f}" if std is not None else "링 없음"
+    return fixed, f"cv2.inpaint ({detail}) — 복잡한 배경은 자국이 남을 수 있음"
+
+
+def repair(img_path, pins, masks=None, out_path=None, font_path=None, engine="auto",
+           fill="auto"):
+    cv2 = _require("cv2", "opencv-python")
 
     masks = masks or []
     src, img = load_bgr(img_path)
@@ -380,7 +460,7 @@ def repair(img_path, pins, masks=None, out_path=None, font_path=None, engine="au
 
     # 핀이 있을 때만 OCR + 엔진 판정 (붓 전용 실행에서 easyocr·torch 로딩 회피)
     if pins:
-        import torch
+        torch = _require("torch", "torch")
 
         try:
             import segment_anything  # noqa: F401
@@ -401,7 +481,8 @@ def repair(img_path, pins, masks=None, out_path=None, font_path=None, engine="au
             jobs[base + i] = v
 
     mask = build_mask(img, rects, jobs, engine, user_masks)
-    fixed = cv2.inpaint(img, mask, INPAINT_RADIUS, cv2.INPAINT_TELEA)
+    fixed, how = restore_background(img, mask, fill)
+    print(f"배경 복원: {how}")
     pil = rewrite_texts(fixed, rects, jobs, font_path)
 
     out = next_out_path(src, out_path)
@@ -415,6 +496,14 @@ def repair(img_path, pins, masks=None, out_path=None, font_path=None, engine="au
 def selftest():
     assert parse_pin("62,88:내비온 기술연구소") == (62.0, 88.0, "내비온 기술연구소")
     assert parse_pin("5,5:비율 10:1 유지")[2] == "비율 10:1 유지"
+    for bad in ("62:문구", "1,2,3:문구", "a,b:문구"):
+        try:
+            parse_pin(bad)
+            raise AssertionError(f"거부되어야 함: {bad}")
+        except ValueError:
+            pass
+    # 두 rect 변환의 경계 규약이 같아야 한다 (sam 박스 프롬프트가 이 값을 그대로 쓴다)
+    assert quad_to_rect([(10, 20), (30, 20), (30, 40), (10, 40)]) == (10, 20, 31, 41)
     rects = [(100, 100, 300, 150), (400, 400, 600, 450)]
     assert match_pin_to_box(200, 125, rects) == 0      # 내부
     assert match_pin_to_box(310, 125, rects) == 0      # 근접
@@ -426,7 +515,7 @@ def selftest():
     assert resolve_engine("sam", False, False) == "sam"  # 명시 선택 존중 (미설치는 실행부에서 안내)
     assert padded_rect((10, 10, 50, 30), 5, (100, 200)) == (5, 5, 55, 35)
     assert padded_rect((2, 2, 198, 98), 5, (100, 200)) == (0, 0, 200, 100)  # 경계 클램프
-    assert quad_to_rect([[10, 20], [50, 18], [52, 40], [9, 42]]) == (9, 18, 52, 42)
+    assert quad_to_rect([[10, 20], [50, 18], [52, 40], [9, 42]]) == (9, 18, 53, 43)
 
     # 붓 마스크 인자: Windows 드라이브 콜론은 구분자가 아니다
     assert parse_mask_arg(r"C:\tmp\m1.png:내비온") == (r"C:\tmp\m1.png", "내비온")
@@ -450,6 +539,13 @@ def selftest():
     single = np.zeros((10, 10), dtype=np.uint8)
     single[5, 7] = 255
     assert mask_to_rect(single) == (7, 5, 8, 6)   # 1픽셀도 폭 0 이 되면 안 된다
+
+    # WIDTH_OVERFLOW 경고: 허용 배율(1.25) 이내는 조용히, 넘으면 box 번호+배율을 알림
+    assert width_overflow_warning(0, 100, 100) is None       # 원본과 동일
+    assert width_overflow_warning(0, 124, 100) is None       # 허용 범위 내
+    w = width_overflow_warning(2, 130, 100)
+    assert w is not None and "box[2]" in w and "1.30" in w
+    assert width_overflow_warning(0, 999, 0) is None          # 폭 0 방어 (분모 0 회피)
     print("selftest OK")
 
 
@@ -463,6 +559,9 @@ def main():
     ap.add_argument("--font", help="ttf 경로 (기본: 맑은 고딕 볼드)")
     ap.add_argument("--engine", choices=["auto", "rect", "sam"], default="auto",
                     help="마스크 엔진 (auto: GPU+sam 설치 시 sam, 아니면 rect). --pin 경로에만 적용")
+    ap.add_argument("--fill", choices=["auto", "solid", "inpaint"], default="auto",
+                    help="배경 복원 (auto: 주변이 단색이면 그 색으로 채우고 아니면 inpaint). "
+                         "단색 배경에서 inpaint 는 옅은 사각 자국을 남긴다")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
@@ -471,7 +570,7 @@ def main():
     if not a.image or not (a.pin or a.mask):
         ap.error("image 와 --pin 또는 --mask 가 필요합니다 (--selftest 제외)")
     repair(a.image, [parse_pin(p) for p in a.pin], [parse_mask_arg(m) for m in a.mask],
-           a.out, a.font, a.engine)
+           a.out, a.font, a.engine, a.fill)
 
 
 if __name__ == "__main__":
