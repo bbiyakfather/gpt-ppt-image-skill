@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""codex 런타임 홈에서 방금 만든 생성물을 찾는다 — gpt-ppt-image 4단계 보조 도구.
+"""생성기(codex·grok)의 런타임 홈에서 방금 만든 생성물을 찾는다 — gpt-ppt-image 4단계 보조 도구.
 
-정책훅이 codex의 저장 단계를 막아도 이미지 자체는 런타임 홈에 남는다. 그때
-"가장 최근 PNG"를 집어오는 우회를 쓰는데, 이 경로가 codex 버전마다 바뀐다.
+생성기가 결과물을 목적지로 복사하는 단계는 환경마다 깨진다. 그래도 이미지 자체는
+런타임 홈에 남으므로 그걸 회수한다. 문제는 그 경로가 버전·세션마다 바뀐다는 것.
 실측 전례:
-  0.144.1  codex-runtime-home/home/generated_images/
-  0.144.6  codex-accounts/<uuid>/home/generated_images/
-  0.145.0  위 두 곳 모두 비거나 낡음. ~/.codex/generated_images/ 사용
+  codex 0.144.1  codex-runtime-home/home/generated_images/
+  codex 0.144.6  codex-accounts/<uuid>/home/generated_images/
+  codex 0.145.0  위 두 곳 모두 비거나 낡음. ~/.codex/generated_images/ 사용
+  grok  1.0.5    ~/.grok/sessions/<URL인코딩된 cwd>/<세션UUID>/images/N.jpg
+                 (복사 단계는 경로가 Windows MAX_PATH 260자를 넘으면 실패한다)
 
 경로만 갈아끼우는 건 증상 치료였다. 진짜 문제는 "최신 PNG"라는 휴리스틱이
 **조용히 틀린다**는 것 — 낡은 경로에 예전 생성물이 남아 있으면 9일 전 이미지를
@@ -46,24 +48,29 @@ ROOT_GLOBS = [
     "AppData/Roaming/orca/codex-runtime-home/home/generated_images",
     ".config/orca/codex-accounts/*/home/generated_images",
     ".config/orca/codex-runtime-home/home/generated_images",
+    ".grok/sessions/*/*/images",
 ]
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 DEFAULT_MAX_AGE = 600.0  # 초. 생성 직후 회수가 전제라 넉넉히 10분.
 _UNSET = object()  # "환경변수를 읽어라"와 "무시하라(None)"를 구분하기 위한 센티널
 
 
-def candidate_roots(home=None, codex_home=_UNSET):
-    """실재하는 생성물 루트들을 반환. CODEX_HOME이 있으면 우선 포함.
+def candidate_roots(home=None, codex_home=_UNSET, grok_home=_UNSET):
+    """실재하는 생성물 루트들을 반환. CODEX_HOME·GROK_HOME이 있으면 우선 포함.
 
-    codex_home 을 명시하면 환경변수 대신 그 값을 쓴다 (None 이면 무시 — selftest 격리용).
+    codex_home/grok_home 을 명시하면 환경변수 대신 그 값을 쓴다
+    (None 이면 무시 — selftest 격리용).
     """
     home = Path(home) if home else Path.home()
     roots = []
-    env = os.environ.get("CODEX_HOME") if codex_home is _UNSET else codex_home
-    if env:
-        p = Path(env) / "generated_images"
-        if p.is_dir():
-            roots.append(p)
+    for var, sub, override in (("CODEX_HOME", "generated_images", codex_home),
+                               ("GROK_HOME", "sessions/*/*/images", grok_home)):
+        env = os.environ.get(var) if override is _UNSET else override
+        if not env:
+            continue
+        for p in sorted(Path(env).glob(sub)):
+            if p.is_dir() and p not in roots:
+                roots.append(p)
     for pattern in ROOT_GLOBS:
         for p in sorted(home.glob(pattern)):
             if p.is_dir() and p not in roots:
@@ -114,7 +121,7 @@ def diagnose(roots, found, since, out=sys.stderr):
         else:
             age = (time.time() - newest) / 3600.0
             print(f"  {_fmt(newest)}  ({age:.1f}시간 전)  {root}", file=out)
-    print("\ncodex가 실제로 저장한 경로는 `-o` 출력을 먼저 확인할 것.", file=out)
+    print("\n생성기가 실제로 저장한 경로를 먼저 확인할 것 (codex: `-o` 출력 / grok: 마지막 줄).", file=out)
 
 
 def selftest():
@@ -131,8 +138,8 @@ def selftest():
         os.utime(old, (now - 9 * 86400, now - 9 * 86400))  # 9일 전 (실측된 사고 재현)
         os.utime(new, (now - 10, now - 10))                # 10초 전
 
-        # codex_home=None 으로 실환경 CODEX_HOME 을 차단해야 격리가 된다
-        roots = candidate_roots(home, codex_home=None)
+        # *_home=None 으로 실환경 CODEX_HOME/GROK_HOME 을 차단해야 격리가 된다
+        roots = candidate_roots(home, codex_home=None, grok_home=None)
         assert roots == [root.parent], roots
         found = scan(roots)
         assert len(found) == 2, found
@@ -148,6 +155,21 @@ def selftest():
         # 확장자 필터
         (root / "note.txt").write_bytes(b"z")
         assert len(scan(roots)) == 2
+
+        # grok 세션 이미지도 같은 게이트로 잡힌다 (경로가 세션마다 다르고 확장자가 .jpg)
+        gimg = home / ".grok" / "sessions" / "F%3A%5Ctmp%5Cgk" / "01a038c0-uuid" / "images"
+        gimg.mkdir(parents=True)
+        gjpg = gimg / "1.jpg"
+        gjpg.write_bytes(b"g")
+        os.utime(gjpg, (now - 5, now - 5))  # codex 생성물보다 5초 신선
+
+        roots2 = candidate_roots(home, codex_home=None, grok_home=None)
+        assert gimg in roots2, roots2
+        assert pick_fresh(scan(roots2), now - 60)[1] == gjpg
+
+        # 낡은 grok 생성물은 여전히 주지 않는다 — 엔진이 늘어도 게이트는 같다
+        os.utime(gjpg, (now - 9 * 86400, now - 9 * 86400))
+        assert pick_fresh(scan(roots2), now - 60)[1] == new
 
     print("selftest OK")
 

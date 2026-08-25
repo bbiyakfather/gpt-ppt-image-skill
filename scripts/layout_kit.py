@@ -5,7 +5,7 @@
 사용법:
     python layout_kit.py sketch  <layout.json> [-o out.html]   # 회색 박스 구도 스케치 (codex -i 지시서)
     python layout_kit.py render  <layout.json> [-o out.html]   # 배경 + 실제 한글 텍스트 합성 (미리보기/최종 PNG 소스)
-    python layout_kit.py pptx    <layout.json> [-o out.pptx]   # 배경 + 네이티브 텍스트박스 (python-pptx 필요)
+    python layout_kit.py pptx    <layout.json> [more.json ...] [-o out.pptx]  # 여러 장 배경 + 네이티브 텍스트박스
     python layout_kit.py capture <in.html> <out.png> --size WxH  # Chrome 헤드리스 캡처 + 1:1 검증
     python layout_kit.py demo                                   # 자가 점검 (임시 폴더, 흔적 없음)
 
@@ -20,7 +20,7 @@ layout.json 스키마:
 좌표 계약: 슬라이드 폭 13.333in 고정(16:9 기준), 높이는 캔버스 비율 추종.
   1pt = canvas.w/960 px  (13.333in × 72pt/in = 960pt ↔ canvas.w px)
   → render HTML의 px 폰트와 pptx의 pt 폰트가 같은 시각 비율이 된다.
-# ponytail: 단일 슬라이드·16:9류 가로형 전용. 멀티 슬라이드가 필요해지면 labels를 pages로 승격.
+# ponytail: layout.json 1개=슬라이드 1장. pptx는 같은 canvas 종횡비의 여러 파일을 입력 순서대로 한 덱에 묶는다.
 """
 import argparse
 import base64
@@ -138,23 +138,15 @@ def render_html(layout: dict, base: Path) -> str:
 
 # ---------- pptx (python-pptx 필요 시에만 import) ----------
 
-def build_pptx(layout: dict, out: Path):
-    try:
-        from pptx import Presentation
-        from pptx.util import Emu, Pt
-        from pptx.dml.color import RGBColor
-        from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
-        from pptx.oxml.ns import qn
-        from lxml import etree
-    except ImportError:
-        sys.exit("python-pptx 없음 — pip install python-pptx 후 재실행 (또는 라벨 가이드 표 폴백)")
+def _draw_pptx_slide(prs, layout: dict, slide_w: int, slide_h: int):
+    """layout 하나를 blank slide 한 장에 그린다. 모든 장이 같은 렌더링 규약을 공유한다."""
+    from pptx.util import Emu, Pt
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
+    from pptx.oxml.ns import qn
+    from lxml import etree
 
     cw, ch = layout["canvas"]["w"], layout["canvas"]["h"]
-    slide_w = SLIDE_W_EMU
-    slide_h = round(SLIDE_W_EMU * ch / cw)
-    prs = Presentation()
-    prs.slide_width = Emu(slide_w)
-    prs.slide_height = Emu(slide_h)
     slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
 
     bg = layout.get("background")
@@ -208,6 +200,39 @@ def build_pptx(layout: dict, out: Path):
             if latin is not None:
                 latin.addnext(ea)   # 스키마 순서: latin → ea → cs
                 ea.addnext(cs)
+
+
+def build_pptx(layout, out: Path, layout_names=None):
+    try:
+        from pptx import Presentation
+        from pptx.util import Emu
+    except ImportError:
+        sys.exit("python-pptx 없음 — pip install python-pptx 후 재실행 (또는 라벨 가이드 표 폴백)")
+
+    layouts = [layout] if isinstance(layout, dict) else list(layout)
+    if not layouts:
+        sys.exit("pptx에는 layout.json이 하나 이상 필요")
+
+    names = list(layout_names) if layout_names is not None else []
+    first_cw = layouts[0]["canvas"]["w"]
+    first_ch = layouts[0]["canvas"]["h"]
+    first_name = str(names[0]) if names else "슬라이드 1"
+    for index, current in enumerate(layouts[1:], start=2):
+        cw = current["canvas"]["w"]
+        ch = current["canvas"]["h"]
+        if cw * first_ch != first_cw * ch:
+            current_name = str(names[index - 1]) if index <= len(names) else f"슬라이드 {index}"
+            sys.exit(
+                "pptx canvas 종횡비 불일치: "
+                f"{current_name} ({cw}x{ch}) != {first_name} ({first_cw}x{first_ch})")
+
+    slide_w = SLIDE_W_EMU
+    slide_h = round(SLIDE_W_EMU * first_ch / first_cw)
+    prs = Presentation()
+    prs.slide_width = Emu(slide_w)
+    prs.slide_height = Emu(slide_h)
+    for current in layouts:
+        _draw_pptx_slide(prs, current, slide_w, slide_h)
     prs.save(str(out))
 
 
@@ -419,7 +444,57 @@ def demo() -> dict:
         # cover-crop 수식 단위 검증 (1536×1024 배경 → 16:9 캔버스: 상하 7.8125% 크롭)
         assert cover_crop(1536, 1024, 1920, 1080) == (0.0, (1 - (1536 / 1024) / (1920 / 1080)) / 2)
         assert cover_crop(1920, 1080, 640, 360) == (0.0, 0.0)  # 동일 비율 → 크롭 없음
+
+        multi_paths = []
+        expected_texts = []
+        for index in range(1, 4):
+            marker = f"멀티 슬라이드 {index}"
+            slide_layout = {
+                **layout,
+                "canvas": {"w": 640 * index, "h": 360 * index},
+                "labels": [dict(lb) for lb in layout["labels"]],
+            }
+            slide_layout["labels"][0]["text"] = marker
+            slide_path = tmp / f"slide{index}.json"
+            slide_path.write_text(json.dumps(slide_layout, ensure_ascii=False), encoding="utf-8")
+            multi_paths.append(slide_path)
+            expected_texts.append(marker)
+
+        multi_out = tmp / "multi.pptx"
+        multi_run = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "pptx",
+             *(str(path) for path in multi_paths), "-o", str(multi_out)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        assert multi_run.returncode == 0, f"멀티 pptx 생성 실패: {multi_run.stderr}"
+        multi_prs = Presentation(str(multi_out))
+        assert len(multi_prs.slides) == 3, f"멀티 pptx 슬라이드 수: {len(multi_prs.slides)}"
+        multi_zip = zipfile.ZipFile(multi_out)
+        for index, slide in enumerate(multi_prs.slides):
+            assert len(slide.shapes) == 3  # 장마다 배경 그림 + 텍스트박스 2
+            slide_text = "\n".join(shape.text for shape in slide.shapes if shape.has_text_frame)
+            assert expected_texts[index] in slide_text
+            assert all(marker not in slide_text for marker in expected_texts if marker != expected_texts[index])
+            slide_xml = multi_zip.read(f"ppt/slides/slide{index + 1}.xml").decode("utf-8")
+            assert '<a:ea typeface="Malgun Gothic"' in slide_xml
+            assert '<a:alpha val="55000"' in slide_xml
+            assert "spAutoFit" not in slide_xml
+            assert 'wrap="square"' in slide_xml
+
+        bad_layout = {**layout, "canvas": {"w": 640, "h": 400}}
+        bad_path = tmp / "slide-bad-ratio.json"
+        bad_path.write_text(json.dumps(bad_layout, ensure_ascii=False), encoding="utf-8")
+        bad_out = tmp / "bad-ratio.pptx"
+        bad_run = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve()), "pptx",
+             str(multi_paths[0]), str(bad_path), "-o", str(bad_out)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        assert bad_run.returncode != 0, "canvas 종횡비 불일치가 중단되지 않음"
+        assert "pptx canvas 종횡비 불일치" in bad_run.stderr, bad_run.stderr
+        assert not bad_out.exists(), "종횡비 불일치인데 pptx가 생성됨"
+
         checks["pptx"] = "ok"
+        checks["pptx_multi"] = "ok"
+        checks["pptx_ratio_guard"] = "ok"
     except ImportError:
         checks["pptx"] = "skipped (python-pptx 없음)"
 
@@ -451,10 +526,13 @@ def main():
             stream.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("sketch", "render", "pptx"):
+    for name in ("sketch", "render"):
         p = sub.add_parser(name)
         p.add_argument("layout", type=Path)
         p.add_argument("-o", "--out", type=Path)
+    pp = sub.add_parser("pptx")
+    pp.add_argument("layouts", nargs="+", type=Path)
+    pp.add_argument("-o", "--out", type=Path)
     pc = sub.add_parser("capture")
     pc.add_argument("html", type=Path)
     pc.add_argument("out", type=Path)
@@ -469,6 +547,13 @@ def main():
         w, h = (int(v) for v in a.size.lower().split("x"))
         print(json.dumps(capture(a.html, a.out, w, h), ensure_ascii=False))
         return
+    if a.cmd == "pptx":
+        layouts = [load_layout(path) for path in a.layouts]
+        stem = a.layouts[0].with_suffix("")
+        out = a.out or Path(f"{stem}.pptx")
+        build_pptx(layouts[0] if len(layouts) == 1 else layouts, out, a.layouts)
+        print(json.dumps({"out": str(out)}, ensure_ascii=False))
+        return
 
     layout = load_layout(a.layout)
     stem = a.layout.with_suffix("")
@@ -481,9 +566,6 @@ def main():
             sys.exit(f"배경 PNG 없음: {bg} — render에는 background가 필요")
         out = a.out or Path(f"{stem}-render.html")
         out.write_text(render_html(layout, Path(bg)), encoding="utf-8")
-    else:
-        out = a.out or Path(f"{stem}.pptx")
-        build_pptx(layout, out)
     print(json.dumps({"out": str(out)}, ensure_ascii=False))
 
 

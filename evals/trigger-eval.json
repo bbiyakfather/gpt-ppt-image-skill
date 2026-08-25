@@ -1,0 +1,90 @@
+[
+  {
+    "query": "회사 신제품 런칭용 배너 이미지 좀 만들어줘. 가로로 길쭉하게 웹사이트 상단에 넣을거고 브랜드 색은 #1E40AF 계열이야. \"봄맞이 사전예약\" 문구가 들어가야 해",
+    "should_trigger": true
+  },
+  {
+    "query": "지난주에 뽑아준 히어로 이미지 있잖아 gpt-image 폴더에. 배경을 좀 더 어둡게 하고 왼쪽 위에 있는 로고를 빼줄래?",
+    "should_trigger": true
+  },
+  {
+    "query": "plan.md 에 사업계획서 초안 써놨는데 이걸로 15분 발표용 덱 만들어줘. 슬라이드를 이미지로 뽑는 방식으로",
+    "should_trigger": true
+  },
+  {
+    "query": "생성은 하지말고 이미지 프롬프트만 30개 짜줘. jsonl 로 정리해서 주면 좋겠어, 나중에 배치로 돌릴거라",
+    "should_trigger": true
+  },
+  {
+    "query": "사내 임원보고용 슬라이드 12장인데 한글 오탈자가 나면 안돼. 그리고 보고 직전에 내가 숫자를 직접 고쳐야 할 수도 있어",
+    "should_trigger": true
+  },
+  {
+    "query": "앱 아이콘 시안 만들어야하는데 단순한 실루엣 느낌으로 정사각형으로 뽑아줘",
+    "should_trigger": true
+  },
+  {
+    "query": "이 다이어그램에서 \"매출액\"이 \"매출앤\"으로 잘못 나왔네. 그 글자만 고칠 수 있어? 다시 만들면 다른데가 바뀔까봐",
+    "should_trigger": true
+  },
+  {
+    "query": "팀 워크숍 홍보 포스터 하나 뽑아줘. A4 세로에 일러스트 느낌으로, 텍스트는 최소한으로",
+    "should_trigger": true
+  },
+  {
+    "query": "codex 로 이미지 생성 되는거 맞지? 로고 시안 3개 정도 뽑아보고싶은데 api키는 없어",
+    "should_trigger": true
+  },
+  {
+    "query": "학회 발표자료 10장짜리 필요해. 논문 abstract 붙여줄테니까 시각적으로 통일된 슬라이드로 만들어줘",
+    "should_trigger": true
+  },
+  {
+    "query": "2024_분기보고서_final.pptx 열어서 3장이랑 7장 본문 텍스트만 좀 수정해줘. 나머지는 건드리지 말고",
+    "should_trigger": false
+  },
+  {
+    "query": "우리 SaaS 랜딩페이지 디자인 레퍼런스가 필요해. 히어로, 기능소개, 요금제, CTA 섹션별로 시안 뽑아줘",
+    "should_trigger": false
+  },
+  {
+    "query": "이 디자인 시안 이미지 보고 실제로 동작하는 React + tailwind 코드로 구현해줘",
+    "should_trigger": false
+  },
+  {
+    "query": "gpt-image 폴더에 png 파일이 40개 넘게 쌓였는데 3일 지난거 다 지워줘",
+    "should_trigger": false
+  },
+  {
+    "query": "폴더 안 이미지들 전부 가로 800px로 리사이즈하는 파이썬 스크립트 하나 짜줘. exif 는 유지하고",
+    "should_trigger": false
+  },
+  {
+    "query": "발표자료 두 개 있는데 (intro.pptx, main.pptx) 이거 하나로 합쳐줄 수 있어? 페이지 번호도 다시 매겨주고",
+    "should_trigger": false
+  },
+  {
+    "query": "이 스크린샷 좀 읽어서 에러 메시지가 뭐라고 써있는지 알려줘",
+    "should_trigger": false
+  },
+  {
+    "query": "모바일 앱 온보딩 화면 3개 시안이 필요해. iOS 기준이고 폰 목업 안에 넣어서 보여줘",
+    "should_trigger": false
+  },
+  {
+    "query": "2023~2025 월별 판매 데이터로 막대 차트 만들어줘. 다크모드에서도 잘 보이게",
+    "should_trigger": false
+  },
+  {
+    "query": "회사 소개서를 워드 문서로 만들어줘. 표지랑 목차 넣고 페이지 번호도 달아서",
+    "should_trigger": false
+  },
+  {
+    "query": "그록으로 다음주 사내 워크숍 안내 포스터 좀 뽑아줘. 세로형이고 제목은 \"2026 상반기 워크숍\", 날짜랑 장소도 한글로 들어가야 해",
+    "should_trigger": true
+  },
+  {
+    "query": "grok cli 깔았는데 grok models 치면 자꾸 로그인 풀렸다고 나와. 세션이 왜 안 붙는지 좀 봐줄래?",
+    "should_trigger": false
+  }
+]
